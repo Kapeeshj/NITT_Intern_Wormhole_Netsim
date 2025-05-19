@@ -1,7 +1,7 @@
 
 
 /****************************************************
-         This file contains code for generation of Malicious Node(SinkHole) for networks running AODV in Layer3.
+         This file contains code for generation of Malicious Node(WormHole) for networks running AODV in Layer3.
 		 This works only for UDP and not for TCP.
 		 
 		 
@@ -41,41 +41,40 @@ int fn_NetSim_AODV_MaliciousNode(NetSim_EVENTDETAILS* );
 int fn_NetSim_AODV_MaliciousRouteAddToCache(NetSim_EVENTDETAILS*);
 int fn_NetSim_AODV_MaliciousProcessSourceRouteOption(NetSim_EVENTDETAILS*);
 
+#define WORMHOLE_NODE1 4
+#define WORMHOLE_NODE2 10
 
-int fn_NetSim_AODV_MaliciousNode(NetSim_EVENTDETAILS* pstruEventDetails)
+// Utility: Check if the node is part of wormhole
+int isWormholeNode(int id)
 {
-	if(pstruEventDetails->nDeviceId == MALICIOUS_NODE1 )
-		{//for 3 malicious nodes if(pstruEventDetails->nDeviceId ==28||pstruEventDetails->nDeviceId ==22||pstruEventDetails->nDeviceId ==34)
-		//just mention in the if statement the id of the device you want to be malicious node)
-		return 1;
-		}
-	return 0;
+    return id == WORMHOLE_NODE1 || id == WORMHOLE_NODE2;
 }
 
-int fn_NetSim_AODV_MaliciousRouteAddToCache(NetSim_EVENTDETAILS* pstruEventDetails)
+// Step 1: Intercept RREQ at one node and tunnel it to the other
+int fn_NetSim_AODV_WormholeTunnelRREQ(NetSim_EVENTDETAILS* pstruEventDetails)
 {
+    if (pstruEventDetails->pPacket->nControlDataType != ctrlPacket_RREQ)
+        return 0;
 
-	AODV_RREQ* rreq = (AODV_RREQ*)pstruEventDetails->pPacket->pstruNetworkData->Packet_RoutingProtocol;
-	
-	AODV_INSERT_ROUTE_TABLE(rreq->DestinationIPAddress,
-		rreq->DestinationSequenceNumber,
-		0,
-		rreq->DestinationIPAddress,
-		pstruEventDetails->dEventTime+AODV_ACTIVE_ROUTE_TIMEOUT);
+    if (pstruEventDetails->nDeviceId == WORMHOLE_NODE1)
+    {
+        // Tunnel the packet directly to WORMHOLE_NODE2
+        NetSim_PACKET* tunneledPacket = fn_NetSim_Packet_CopyPacket(pstruEventDetails->pPacket);
 
-	return 1;
+        NetSim_EVENTDETAILS pevent;
+        memcpy(&pevent, pstruEventDetails, sizeof(NetSim_EVENTDETAILS));
+        pevent.nDeviceId = WORMHOLE_NODE2; // Redirect to other end
+        pevent.nEventType = NETWORK_IN_EVENT;
+        pevent.pPacket = tunneledPacket;
+        pevent.dEventTime += 1.0; // Small delay
 
+        fnpAddEvent(&pevent);
+
+        // Drop the original packet
+        fn_NetSim_Packet_FreePacket(pstruEventDetails->pPacket);
+        return 1;
+    }
+
+    return 0;
 }
 
-int fn_NetSim_AODV_MaliciousProcessSourceRouteOption(NetSim_EVENTDETAILS* pstruEventDetails)
-{
-	NetSim_PACKET* packet = pstruEventDetails->pPacket;
-	
-	
-		//update the metrics
-		AODV_DEV_VAR(pstruEventDetails->nDeviceId)->aodvMetrics.packetReceived++;
-		
-		
-	fn_NetSim_Packet_FreePacket(pstruEventDetails->pPacket);
-	return 0;
-}
